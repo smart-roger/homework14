@@ -18,6 +18,7 @@ set_target_properties(yamr PROPERTIES
 	COMPILE_OPTIONS -Wpedantic -Wall -Wextra
 )
 
+
 target_link_libraries (yamr ${CMAKE_THREAD_LIBS_INIT})
 
 install(TARGETS yamr RUNTIME DESTINATION bin)
