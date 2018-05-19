@@ -7,6 +7,8 @@ include_directories(
 	include
 )
 
+find_package (Threads)
+
 add_executable(yamr
 					main.cpp )
 
@@ -15,6 +17,8 @@ set_target_properties(yamr PROPERTIES
 	CXX_STANDARD_REQUIRED ON
 	COMPILE_OPTIONS -Wpedantic -Wall -Wextra
 )
+
+target_link_libraries (yamr ${CMAKE_THREAD_LIBS_INIT})
 
 install(TARGETS yamr RUNTIME DESTINATION bin)
 
