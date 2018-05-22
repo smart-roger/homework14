@@ -10,10 +10,14 @@
 #include <algorithm>
 #include <fstream>
 #include <sstream>
+#include <functional>
 
 //  Контейнеры для передачи данных
 using typeResultContainer = std::vector<std::string>  ;
 using typeResultContainerPtr = std::shared_ptr<typeResultContainer>;
+
+using funcMapper = std::function<void(std::string, typeResultContainerPtr)>;
+using funcReducer = std::function<void(typeResultContainerPtr&, std::shared_ptr<std::ofstream>)>;
 
 //  Структура задачи для маппера
 struct mapTask{
@@ -51,19 +55,32 @@ typeResultContainer mergeSort(std::vector<typeResultContainerPtr> inputs){
 
 //  Определение ключа для выбора редюсера
 unsigned char getKey(std::string value, int countReducers){
-    if(value.empty())
+    std::hash<std::string> hash_fn;
+	if(value.empty())
         return 0;
-    else return value.at(0)%countReducers;
+    else return hash_fn(value) % countReducers;
 }
 
 //  Мютекс для считывания из файлов в нескольких потоках
 std::mutex  mutexFile;
 
+void mapper(std::string line, typeResultContainerPtr result){
+	if (nullptr == result)
+		return;
+
+	for(size_t idx=1; idx <line.length(); ++idx){
+		result->push_back(line.substr(0,idx));	
+		//std::cout << line.substr(0,idx) << std::endl;
+	}
+}
+
 //  Функция для маппера. Считывает данные в память и затем разбивает их на строки.
 void readFunction(std::ifstream& fileIn,
                     std::iostream::pos_type startPos,
                     std::iostream::pos_type stopPos,
-                    typeResultContainerPtr result){
+					typeResultContainerPtr result,
+					funcMapper mapper
+                    ){
 try{
     size_t length(stopPos - startPos);
     std::vector<char> buffer;
@@ -83,7 +100,7 @@ try{
 
     ptrLine = strtok(ptrBuffer, "\n");
     while(ptrLine != nullptr){
-        result->push_back(ptrLine);
+        mapper(ptrLine, result);
         ptrLine = strtok(nullptr, "\n");
     }
 } catch(std::exception& e){
@@ -96,20 +113,25 @@ void reduceFunction (typeResultContainerPtr& input, std::shared_ptr<std::ofstrea
     if (input->empty()) return;
 
     size_t minimumPrefix(1);
-    std::string current(input->front());
-    std::for_each(++input->begin(), input->end(),
-                  [&current, &minimumPrefix](auto line){
-                    size_t prefix = commonPrefix(current, line);
-                    if(prefix>minimumPrefix)
-                        minimumPrefix = prefix;
-                    current = line;
-                  }
-            );
+	size_t counter(0);
+	
+    std::string current("");
+    for (std::string prefix : *input) {
+		if (minimumPrefix <= prefix.length() ){
+			if(current == prefix )
+			{
+				minimumPrefix = prefix.length()+1;
+			}else{
+				current = prefix;
+			}
+		}
+	}
 
     (*out) << "Minimum prefix: " << minimumPrefix << std::endl;
-    (*out) << "Reducer data:" << std::endl;
-    std::for_each(input->begin(), input->end(), [&out](auto line){
-                (*out) << line << std::endl;});
+	//std::cout << "Minimum prefix: " << minimumPrefix << std::endl;
+    //(*out) << "Reducer data:" << std::endl;
+    //std::for_each(input->begin(), input->end(), [&out](auto line){
+    //            (*out) << line << std::endl;});
 /*
     std::cout << "Minimum prefix: " << minimumPrefix << std::endl;
     std::cout << "Reducer data:" << std::endl;
@@ -189,7 +211,8 @@ int main(int argc, char** argv)
                                 readFunction,
                                 std::ref(fileInput),
                                 begin, end,
-                                newTask.ptrResult);
+								newTask.ptrResult,
+                                mapper);
         taskForMapperAll.push_back(newTask);
         begin = end;
     }
@@ -209,7 +232,7 @@ int main(int argc, char** argv)
     std::vector<std::string> fromMappers = mergeSort(vecResult);
 
 //  Формируем задачи для редюсеров
-    std::vector<typeResultContainerPtr > forReducers;
+    std::vector<typeResultContainerPtr> forReducers;
     for(auto num=0; num<countReducers; ++num)
         forReducers.push_back(std::make_shared<typeResultContainer>());
 
